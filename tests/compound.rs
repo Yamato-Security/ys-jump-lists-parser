@@ -124,6 +124,35 @@ fn streams_are_found_in_any_case() {
     assert!(!jumplist::compound::same_name("DestList", "DestList2"));
 }
 
+/// Names compare as MS-CFB 2.6.4 says: the same length in UTF-16 code units, then each unit
+/// uppercased with Unicode's simple (one-to-one) mapping, never the full one that expands.
+#[test]
+fn names_compare_with_the_simple_uppercase_mapping() {
+    use jumplist::compound::same_name;
+    for (a, b) in [
+        ("é", "É"),
+        ("Ünicode", "üNICODE"),
+        ("ſ", "S"), // long s
+        ("ı", "I"), // dotless i
+        ("ß", "ß"),
+        ("ᾀ", "ᾈ"), // a ypogegrammeni's simple uppercase: prosgegrammeni
+        ("ᾳ", "ᾼ"),
+        ("\u{1f600}", "\u{1f600}"), // a surrogate pair, as is
+    ] {
+        assert!(same_name(a, b), "{a} = {b}");
+    }
+    for (a, b) in [
+        ("ß", "SS"), // full uppercase only
+        ("ﬀ", "FF"),
+        ("ᾀ", "ἈΙ"),
+        ("i", "İ"),
+        ("ab", "abc"),
+        ("\u{10428}", "\u{10400}"), // outside the BMP: two code units, not uppercased
+    ] {
+        assert!(!same_name(a, b), "{a} != {b}");
+    }
+}
+
 mod damage {
     use proptest::prelude::*;
 

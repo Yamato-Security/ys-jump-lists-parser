@@ -38,11 +38,35 @@ pub fn is_compound(data: &[u8]) -> bool {
     data.get(..8) == Some(&SIGNATURE[..])
 }
 
-/// Whether two directory entry names are the same: compound files compare
-/// names without regard to case (MS-CFB 2.6.4).
+/// Whether two directory entry names are the same, as compound files compare
+/// them (MS-CFB 2.6.4): as many UTF-16 code units, each the same once
+/// uppercased with Unicode's simple (one-to-one) mapping. `ß` is not `SS`.
 #[must_use]
 pub fn same_name(a: &str, b: &str) -> bool {
-    a.to_uppercase() == b.to_uppercase()
+    a.encode_utf16().count() == b.encode_utf16().count()
+        && a.encode_utf16()
+            .zip(b.encode_utf16())
+            .all(|(x, y)| x == y || simple_upper(x) == simple_upper(y))
+}
+
+/// A UTF-16 code unit uppercased with Unicode's simple mapping; a surrogate is
+/// unchanged.
+fn simple_upper(unit: u16) -> u16 {
+    let Some(c) = char::from_u32(u32::from(unit)) else {
+        return unit;
+    };
+    let mut full = c.to_uppercase();
+    match (full.next(), full.next()) {
+        (Some(upper), None) => u16::try_from(u32::from(upper)).unwrap_or(unit),
+        // A longer full mapping (`ß` → `SS`): the simple one is the character
+        // itself, except for the Greek letters with ypogegrammeni, which take
+        // prosgegrammeni (`ᾀ` → `ᾈ`).
+        _ => match unit {
+            0x1f80..=0x1f87 | 0x1f90..=0x1f97 | 0x1fa0..=0x1fa7 => unit + 8,
+            0x1fb3 | 0x1fc3 | 0x1ff3 => unit + 9,
+            _ => unit,
+        },
+    }
 }
 
 /// Why a compound file couldn't be read.
