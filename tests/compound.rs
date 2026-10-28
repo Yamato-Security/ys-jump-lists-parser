@@ -2,14 +2,16 @@
 //! oracle only: `tests/fixtures/oracle/olefile_tree.py` wrote
 //! `olefile.tsv`): every entry's path, type, size, creation and
 //! modification time, in plaso's `Document.doc` (Apache-2.0; a storage
-//! inside a storage, with both times) and in the automatic jump lists.
+//! inside a storage, with both times) and in every automatic jump list among
+//! the fixtures (4,096-byte sectors, and files that end inside their last
+//! sector, included).
 
 use std::collections::BTreeSet;
 
-use shell::compound::{CompoundFile, Entry};
+use jumplist::compound::{CompoundFile, Entry};
 
-/// `Document.doc` and the eight automatic jump lists.
-const FILES: usize = 9;
+/// `Document.doc` and the 13 automatic jump lists.
+const FILES: usize = 14;
 
 fn fixtures(path: &str) -> String {
     format!("{}/tests/fixtures/{path}", env!("CARGO_MANIFEST_DIR"))
@@ -88,6 +90,67 @@ fn a_storage_holds_its_children() {
         file.contents(summary).unwrap(),
         file.stream("\u{5}SummaryInformation").unwrap().unwrap()
     );
+}
+
+#[test]
+fn streams_are_found_in_any_case() {
+    // Compound files compare names without regard to case (MS-CFB 2.6.4).
+    let data = std::fs::read(fixtures("compound/plaso/Document.doc")).unwrap();
+    let file = CompoundFile::parse(&data).unwrap();
+    let summary = file.stream("\u{5}SummaryInformation").unwrap().unwrap();
+    for name in ["\u{5}summaryinformation", "\u{5}SUMMARYINFORMATION"] {
+        assert_eq!(
+            file.stream(name).unwrap().as_ref(),
+            Some(&summary),
+            "{name}"
+        );
+        assert_eq!(
+            file.find_stream(name).map(|e| e.name.as_str()),
+            Some("\u{5}SummaryInformation")
+        );
+    }
+    assert_eq!(file.stream("\u{5}SummaryInformatio").unwrap(), None);
+    let data = std::fs::read(fixtures(
+        "jumplist/Win10/f01b4d95cf55d32a.automaticDestinations-ms",
+    ))
+    .unwrap();
+    let file = CompoundFile::parse(&data).unwrap();
+    let dest_list = file.stream("DestList").unwrap().unwrap();
+    assert_eq!(file.stream("destlist").unwrap(), Some(dest_list));
+    assert!(jumplist::compound::same_name(
+        "DestListPropertyStore",
+        "destlistpropertystore"
+    ));
+    assert!(!jumplist::compound::same_name("DestList", "DestList2"));
+}
+
+/// Names compare as MS-CFB 2.6.4 says: the same length in UTF-16 code units, then each unit
+/// uppercased with Unicode's simple (one-to-one) mapping, never the full one that expands.
+#[test]
+fn names_compare_with_the_simple_uppercase_mapping() {
+    use jumplist::compound::same_name;
+    for (a, b) in [
+        ("é", "É"),
+        ("Ünicode", "üNICODE"),
+        ("ſ", "S"), // long s
+        ("ı", "I"), // dotless i
+        ("ß", "ß"),
+        ("ᾀ", "ᾈ"), // a ypogegrammeni's simple uppercase: prosgegrammeni
+        ("ᾳ", "ᾼ"),
+        ("\u{1f600}", "\u{1f600}"), // a surrogate pair, as is
+    ] {
+        assert!(same_name(a, b), "{a} = {b}");
+    }
+    for (a, b) in [
+        ("ß", "SS"), // full uppercase only
+        ("ﬀ", "FF"),
+        ("ᾀ", "ἈΙ"),
+        ("i", "İ"),
+        ("ab", "abc"),
+        ("\u{10428}", "\u{10400}"), // outside the BMP: two code units, not uppercased
+    ] {
+        assert!(!same_name(a, b), "{a} != {b}");
+    }
 }
 
 mod damage {

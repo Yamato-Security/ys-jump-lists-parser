@@ -1,31 +1,22 @@
-//! Jump lists against Eric Zimmerman's JLECmd (its output in
-//! `tests/fixtures/oracle/`), on his MIT test set (automatic jump lists
-//! from Windows 7, 8.0, 8.1 and 10), plaso's Apache-2.0 test data
-//! (automatic and custom) and a synthetic custom one: every `DestList`
-//! column, and the link columns of each entry.
-//!
-//! JLECmd names only the first category of a custom jump list; later
-//! ones are checked against their bytes by hand.
+//! Jump lists against Eric Zimmerman's JLECmd (its output in `tests/fixtures/oracle/`, JLECmd
+//! 2026.10.5): every `DestList` column, and the link columns of each entry, of every automatic
+//! jump list in `tests/fixtures/jumplist/` (Windows 7 to 11, `DestList` versions 1, 3, 4 and 6,
+//! 512- and 4,096-byte sectors, files that end inside their last sector); the links and category
+//! names of the custom ones it reads. See `tests/fixtures/jumplist/README.md` for the sources.
 
 mod common;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 
 use common::{fixtures, path_agrees, records, when};
-use shell::jumplist::{self, Destination, Kind};
+use jumplist::{compound::CompoundFile, Destination, Kind};
 use shell::lnk::Link;
 
-const FILES: [&str; 8] = [
-    "Win10/7e4dca80246863e3.automaticDestinations-ms",
-    "Win10/f01b4d95cf55d32a.automaticDestinations-ms",
-    "Win10/5f7b5f1e01b83767.automaticDestinations-ms",
-    "Win7/1b4dd67f29cb1962.automaticDestinations-ms",
-    "Win80/f01b4d95cf55d32a.automaticDestinations-ms",
-    "Win81/f01b4d95cf55d32a.automaticDestinations-ms",
-    "plaso/1b4dd67f29cb1962.automaticDestinations-ms",
-    "plaso/9d1f905ce5044aee.automaticDestinations-ms",
-];
+/// Automatic jump lists JLECmd reads: all of them.
+const AUTOMATIC: usize = 13;
+/// `DestList` entries in them.
+const ENTRIES: usize = 136;
 
 const CUSTOM: [&str; 3] = [
     "plaso/368d807282ccde9d.customDestinations-ms",
@@ -62,7 +53,16 @@ fn check_link(link: &Link, row: &HashMap<String, String>, at: &str) {
     for (column, value) in link_columns(link) {
         assert_eq!(&value, &row[column], "{at}: {column}");
     }
-    let target = link.target_path();
+    // Without a target ID list, JLECmd names the target from the link information.
+    let mut target = link.target_path();
+    if target.is_empty() {
+        let base = if link.network_path.is_empty() {
+            &link.local_path
+        } else {
+            &link.network_path
+        };
+        target = format!("{base}\\{}", link.common_path);
+    }
     assert!(
         path_agrees(&row["TargetIDAbsolutePath"], &target),
         "{at}: {} vs {target}",
@@ -83,13 +83,16 @@ fn oracle(name: &str) -> HashMap<String, Vec<HashMap<String, String>>> {
 
 fn columns(d: &Destination, version: u32) -> Vec<(&'static str, String)> {
     vec![
-        ("EntryNumber", d.entry.to_string()),
+        ("EntryNumber", format!("{:X}", d.entry)),
         ("DestListVersion", version.to_string()),
         ("LastModified", when(d.last_used)),
         ("CreationTime", when(d.droid_created)),
         ("Hostname", d.hostname.clone()),
         ("MacAddress", d.mac.clone()),
-        ("InteractionCount", d.access_count.unwrap_or(0).to_string()),
+        (
+            "InteractionCount",
+            d.interaction_count.unwrap_or(0).to_string(),
+        ),
         (
             "PinStatus",
             if d.pin.is_some() { "True" } else { "False" }.to_owned(),
@@ -101,21 +104,45 @@ fn columns(d: &Destination, version: u32) -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The automatic jump lists among the fixtures, by path under `tests/fixtures/jumplist/`.
+fn automatic_files() -> BTreeSet<String> {
+    let mut files = BTreeSet::new();
+    let mut dirs = vec![fixtures().join("jumplist")];
+    while let Some(dir) = dirs.pop() {
+        for entry in fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path
+                .to_string_lossy()
+                .ends_with(".automaticDestinations-ms")
+            {
+                let relative = path.strip_prefix(fixtures().join("jumplist")).unwrap();
+                files.insert(relative.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    files
+}
+
 #[test]
 fn automatic_matches_jlecmd() {
     let mut by_file = oracle("JLECmd.csv");
+    let files = automatic_files();
+    assert_eq!(files.len(), AUTOMATIC);
     let mut checked = 0;
-    for file in FILES {
+    for file in &files {
         let data = fs::read(fixtures().join("jumplist").join(file)).unwrap();
         let list = jumplist::automatic(&data).unwrap();
         assert!(list.problems.is_empty(), "{file}: {:?}", list.problems);
-        let rows = by_file.remove(file).unwrap_or_default();
+        let rows = by_file.remove(file.as_str()).unwrap_or_default();
         assert_eq!(list.destinations.len(), rows.len(), "{file}");
         for row in rows {
             // JLECmd numbers entries most recent first, which is stream order.
             let at = format!("{file} MRU {}", row["MRU"]);
             let d = &list.destinations[row["MRU"].parse::<usize>().unwrap()];
-            for (column, value) in columns(d, list.version) {
+            assert_eq!(d.position.to_string(), row["MRU"], "{at}");
+            for (column, value) in columns(d, list.version()) {
                 assert_eq!(&value, &row[column], "{at}: {column}");
             }
             // JLECmd appends what it resolves the path to (`… ==> …`).
@@ -126,7 +153,7 @@ fn automatic_matches_jlecmd() {
         }
     }
     assert!(by_file.is_empty(), "files not tested: {:?}", by_file.keys());
-    assert_eq!(checked, 31);
+    assert_eq!(checked, ENTRIES);
 }
 
 #[test]
@@ -145,8 +172,10 @@ fn custom_matches_jlecmd() {
         assert_eq!(links.len(), rows.len(), "{file}");
         for (i, (row, (kind, link))) in rows.iter().zip(links).enumerate() {
             let at = format!("{file} link {i}");
-            if !row["EntryName"].is_empty() {
-                assert_eq!(kind, &Kind::Custom(row["EntryName"].clone()), "{at}");
+            // JLECmd names a custom category; its tasks have no name.
+            match kind {
+                Kind::Custom(name) => assert_eq!(name, &row["EntryName"], "{at}"),
+                _ => assert_eq!(row["EntryName"], "", "{at}"),
             }
             check_link(link, row, &at);
             checked += 1;
@@ -186,6 +215,49 @@ fn custom_categories() {
             (Kind::Tasks, 2),
         ]
     );
+    // Windows 11 Chrome: after its three categories, the end of a longer, earlier list. JLECmd
+    // refuses the file ("footer missing").
+    let rewritten = jumplist::custom(
+        &fs::read(
+            fixtures()
+                .join("jumplist/jumplist_parser/win11/5d696d521de238c3.customDestinations-ms"),
+        )
+        .unwrap(),
+    );
+    assert!(rewritten.problems.is_empty(), "{:?}", rewritten.problems);
+    assert_eq!(rewritten.links().count(), 6);
+    assert_eq!(rewritten.trailing, 3250);
+    let leftover: Vec<(usize, &str)> = rewritten
+        .leftover
+        .iter()
+        .map(|l| (l.offset, l.link.arguments.as_str()))
+        .collect();
+    assert_eq!(
+        leftover,
+        [
+            (
+                11_472,
+                "--win-jumplist-action=most-visited http://192.168.50.33:5000/"
+            ),
+            (
+                13_609,
+                "--win-jumplist-action=recently-closed http://192.168.50.33:3000/"
+            ),
+        ]
+    );
+    for current in rewritten.links().map(|(_, l)| &l.arguments) {
+        assert!(!current.contains("192.168.50.33"), "{current}");
+    }
+    // An empty Windows 11 list, which JLECmd refuses.
+    let empty_11 = jumplist::custom(
+        &fs::read(
+            fixtures()
+                .join("jumplist/jumplist_parser/win11/f01b4d95cf55d32a.customDestinations-ms"),
+        )
+        .unwrap(),
+    );
+    assert_eq!(empty_11.links().count(), 0);
+    assert!(empty_11.problems.is_empty(), "{:?}", empty_11.problems);
     // An empty list: a header and no categories.
     let empty =
         fs::read(fixtures().join("jumplist/plaso/c98dce577f884ef8.customDestinations-ms")).unwrap();
@@ -219,25 +291,25 @@ mod garbage {
         #[test]
         fn damaged_automatic_lists_never_panic(flips in proptest::collection::vec((any::<usize>(), any::<u8>()), 1..40), cut in any::<usize>()) {
             let data = damaged("Win10/f01b4d95cf55d32a.automaticDestinations-ms", flips, cut);
-            if let Ok(file) = shell::compound::CompoundFile::parse(&data) {
+            if let Ok(file) = jumplist::compound::CompoundFile::parse(&data) {
                 for entry in &file.entries {
                     let _ = file.stream(&entry.name);
                 }
             }
-            let _ = shell::jumplist::automatic(&data);
+            let _ = jumplist::automatic(&data);
         }
 
         #[test]
         fn damaged_custom_lists_never_panic(flips in proptest::collection::vec((any::<usize>(), any::<u8>()), 1..40), cut in any::<usize>()) {
             let data = damaged("plaso/368d807282ccde9d.customDestinations-ms", flips, cut);
-            let _ = shell::jumplist::custom(&data);
+            let _ = jumplist::custom(&data);
         }
 
         /// Any bytes at all.
         #[test]
         fn arbitrary_bytes_never_panic(data in proptest::collection::vec(any::<u8>(), 0..4096)) {
-            let _ = shell::jumplist::automatic(&data);
-            let _ = shell::jumplist::custom(&data);
+            let _ = jumplist::automatic(&data);
+            let _ = jumplist::custom(&data);
         }
     }
 }
@@ -349,7 +421,7 @@ fn compound_file(streams: &[(&str, Vec<u8>)]) -> Vec<u8> {
 fn destlist_entries_repeating_a_stream_read_it_once() {
     // A DestList (version 4) of 200 entries all naming stream "1": the link
     // is read for the first, and each repeat is a problem, not a copy.
-    let link = std::fs::read(fixtures().join("lnk/Win10/services.lnk")).unwrap();
+    let link = sample_link();
     let mut stream = link.clone();
     stream.resize(4096, 0);
     let entries = 200;
@@ -381,4 +453,241 @@ fn destlist_entries_repeating_a_stream_read_it_once() {
         .filter(|p| p.contains("repeats stream 1"))
         .count();
     assert_eq!(repeats, entries - 1, "{:?}", list.problems.first());
+}
+
+/// A real link: the first entry of Windows 10 Explorer's list.
+fn sample_link() -> Vec<u8> {
+    let data =
+        fs::read(fixtures().join("jumplist/Win10/f01b4d95cf55d32a.automaticDestinations-ms"))
+            .unwrap();
+    CompoundFile::parse(&data)
+        .unwrap()
+        .stream("1")
+        .unwrap()
+        .unwrap()
+}
+
+/// A property store holding `System.ItemNameDisplay` = `name`.
+fn property_store(name: &str) -> Vec<u8> {
+    // {B725F130-47EF-101A-A5F1-02608C9EEBAC}, property 10
+    let fmtid = [
+        0x30, 0xf1, 0x25, 0xb7, 0xef, 0x47, 0x1a, 0x10, 0xa5, 0xf1, 0x02, 0x60, 0x8c, 0x9e, 0xeb,
+        0xac,
+    ];
+    let units: Vec<u16> = name.encode_utf16().chain([0]).collect();
+    let mut typed = vec![0x1f, 0, 0, 0];
+    typed.extend_from_slice(&(units.len() as u32).to_le_bytes());
+    typed.extend(units.iter().flat_map(|u| u.to_le_bytes()));
+    typed.resize(typed.len().div_ceil(4) * 4, 0);
+    let mut value = Vec::new();
+    value.extend_from_slice(&((9 + typed.len()) as u32).to_le_bytes());
+    value.extend_from_slice(&10u32.to_le_bytes());
+    value.push(0);
+    value.extend(typed);
+    let mut storage = vec![0; 4];
+    storage.extend_from_slice(b"1SPS");
+    storage.extend_from_slice(&fmtid);
+    storage.extend(value);
+    storage.extend_from_slice(&0u32.to_le_bytes());
+    let n = storage.len() as u32;
+    storage[..4].copy_from_slice(&n.to_le_bytes());
+    storage.extend_from_slice(&0u32.to_le_bytes());
+    storage
+}
+
+/// A version 4 `DestList` entry naming stream `number`, with `path` and a property store.
+fn entry_v4(number: u32, path: &str, store: &[u8]) -> Vec<u8> {
+    let mut e = vec![0u8; 130];
+    e[88..92].copy_from_slice(&number.to_le_bytes());
+    e[100..108].copy_from_slice(&132_000_000_000_000_000u64.to_le_bytes());
+    e[108..112].copy_from_slice(&u32::MAX.to_le_bytes()); // not pinned
+    e[116..120].copy_from_slice(&7u32.to_le_bytes()); // interaction count
+    let units: Vec<u16> = path.encode_utf16().collect();
+    e[128..130].copy_from_slice(&(units.len() as u16).to_le_bytes());
+    e.extend(units.iter().flat_map(|u| u.to_le_bytes()));
+    e.extend_from_slice(&(store.len() as u32).to_le_bytes());
+    e.extend_from_slice(store);
+    e
+}
+
+fn dest_list(entries: &[Vec<u8>]) -> Vec<u8> {
+    let mut dest = vec![0u8; 32];
+    dest[..4].copy_from_slice(&4u32.to_le_bytes());
+    dest[4..8].copy_from_slice(&(entries.len() as u32).to_le_bytes());
+    dest[16..20].copy_from_slice(&3u32.to_le_bytes()); // last entry number
+    for e in entries {
+        dest.extend_from_slice(e);
+    }
+    dest
+}
+
+/// Windows 10 and 11 can give an entry its own property store, after its path; the next entry
+/// follows the store.
+#[test]
+fn entries_with_property_stores() {
+    let store = property_store("Quarterly report");
+    let mut dest = dest_list(&[
+        entry_v4(1, r"C:\Reports\q3.xlsx", &store),
+        entry_v4(2, r"C:\Reports\q4.xlsx", &[]),
+    ]);
+    dest.resize(dest.len().max(4096), 0);
+    let mut link = sample_link();
+    link.resize(4096, 0);
+    let file = compound_file(&[("DestList", dest), ("1", link.clone()), ("2", link)]);
+    let list = jumplist::automatic(&file).unwrap();
+    assert!(list.problems.is_empty(), "{:?}", list.problems);
+    let paths: Vec<&str> = list.destinations.iter().map(|d| d.path.as_str()).collect();
+    assert_eq!(paths, [r"C:\Reports\q3.xlsx", r"C:\Reports\q4.xlsx"]);
+    let first = &list.destinations[0];
+    assert_eq!(first.properties.len(), 1);
+    assert_eq!(
+        first.properties[0].canonical_name(),
+        Some("System.ItemNameDisplay")
+    );
+    assert_eq!(first.properties[0].value.display(), "Quarterly report");
+    assert_eq!(first.interaction_count, Some(7));
+    assert!(
+        list.destinations[1].properties.is_empty(),
+        "{:?}",
+        list.destinations[1].properties
+    );
+    let header = list.header.as_ref().unwrap();
+    assert_eq!(
+        (header.version, header.entry_count, header.last_entry_number),
+        (4, 2, 3)
+    );
+}
+
+/// The `DestListPropertyStore` stream (a size, then a property store), and a link stream no
+/// entry names.
+#[test]
+fn the_list_property_store_and_unlisted_streams() {
+    // In any case: compound files compare names without regard to case.
+    for store_name in ["DestListPropertyStore", "DESTLISTPROPERTYSTORE"] {
+        let mut dest = dest_list(&[entry_v4(1, "C:\\a.txt", &[])]);
+        dest.resize(4096, 0);
+        let store = property_store("Shared store");
+        let mut stream = (store.len() as u32).to_le_bytes().to_vec();
+        stream.extend(store);
+        stream.resize(4096, 0);
+        let mut link = sample_link();
+        link.resize(4096, 0);
+        let file = compound_file(&[
+            ("DestList", dest),
+            (store_name, stream),
+            ("1", link.clone()),
+            ("9", link),
+        ]);
+        let list = jumplist::automatic(&file).unwrap();
+        assert!(list.problems.is_empty(), "{:?}", list.problems);
+        assert_eq!(list.properties.len(), 1, "{store_name}");
+        assert_eq!(list.properties[0].value.display(), "Shared store");
+        assert_eq!(list.unlisted.len(), 1, "{store_name}: {:?}", list.unlisted);
+        assert_eq!(list.unlisted[0].name, "9");
+        assert!(list.unlisted[0].link.is_some());
+    }
+}
+
+/// An entry whose stream is missing, and counts that disagree with the header.
+#[test]
+fn missing_streams_and_counts_are_problems() {
+    let mut dest = dest_list(&[entry_v4(1, "C:\\a.txt", &[]), entry_v4(2, "C:\\b.txt", &[])]);
+    dest[4..8].copy_from_slice(&5u32.to_le_bytes());
+    dest.resize(4096, 0);
+    let mut link = sample_link();
+    link.resize(4096, 0);
+    let list = jumplist::automatic(&compound_file(&[("DestList", dest), ("1", link)])).unwrap();
+    assert_eq!(list.destinations.len(), 2);
+    assert_eq!(
+        list.problems,
+        [
+            "DestList: the header counts 5 entries, the stream holds 2",
+            "entry 2 has no stream"
+        ]
+    );
+}
+
+/// A file that ends inside its last sector: the bytes that are there are read.
+#[test]
+fn a_file_cut_inside_its_last_sector() {
+    let data =
+        fs::read(fixtures().join("jumplist/artemis/3d2110c4a0cb6d15.automaticDestinations-ms"))
+            .unwrap();
+    assert_ne!(data.len() % 512, 0);
+    let list = jumplist::automatic(&data).unwrap();
+    assert_eq!(list.destinations.len(), 41);
+    assert!(list.problems.is_empty(), "{:?}", list.problems);
+    // Cut further, the stream comes out short and says so.
+    let short = jumplist::automatic(&data[..data.len() - 100]).unwrap();
+    assert!(
+        short.problems.iter().any(|p| p.contains("the file ends")),
+        "{:?}",
+        short.problems
+    );
+}
+
+/// Application names, and paths with shell namespace GUIDs named.
+#[cfg(feature = "guid-names")]
+#[test]
+fn application_and_folder_names() {
+    assert_eq!(
+        jumplist::appid::app_name("f01b4d95cf55d32a"),
+        Some("Windows Explorer Windows 8.1")
+    );
+    let data =
+        fs::read(fixtures().join("jumplist/Win10/7e4dca80246863e3.automaticDestinations-ms"))
+            .unwrap();
+    let list = jumplist::automatic(&data).unwrap();
+    // JLECmd: ::{26EE0668-…}\5\::{BB06C0E4-…} ==> ControlPanelHome\5\System
+    assert_eq!(
+        list.destinations[0].display_path(),
+        r"ControlPanelHome\5\System"
+    );
+}
+
+/// `data` with the compound file directory entry of stream `from` renamed `to` (a name of the same
+/// length).
+fn rename_stream(data: &mut [u8], from: &str, to: &str) {
+    let name = |s: &str| -> Vec<u8> {
+        s.encode_utf16()
+            .chain([0])
+            .flat_map(u16::to_le_bytes)
+            .collect()
+    };
+    let (from, to) = (name(from), name(to));
+    assert_eq!(from.len(), to.len());
+    // Directory entries are 128 bytes, sector-aligned: the name, its size in bytes at 64, the
+    // type at 66 (2 = stream).
+    let at = (0..data.len() - 128)
+        .step_by(128)
+        .find(|&o| {
+            data[o..o + from.len()] == from[..]
+                && data[o + 64..o + 66] == (from.len() as u16).to_le_bytes()
+                && data[o + 66] == 2
+        })
+        .unwrap();
+    data[at..at + to.len()].copy_from_slice(&to);
+}
+
+/// Compound files compare directory entry names without regard to case: stream `A` holds entry
+/// `a`'s link, `DESTLIST` is the `DestList`.
+#[test]
+fn stream_names_match_in_any_case() {
+    let data = fs::read(
+        fixtures().join("jumplist/jumplist_parser/other/5f7b5f1e01b83767.automaticDestinations-ms"),
+    )
+    .unwrap();
+    let original = jumplist::automatic(&data).unwrap();
+    assert!(original.destinations.iter().any(|d| d.entry == 0xa));
+    let mut renamed = data.clone();
+    rename_stream(&mut renamed, "a", "A");
+    rename_stream(&mut renamed, "DestList", "DESTLIST");
+    let list = jumplist::automatic(&renamed).unwrap();
+    assert!(list.problems.is_empty(), "{:?}", list.problems);
+    assert!(list.unlisted.is_empty(), "{:?}", list.unlisted);
+    assert_eq!(list.destinations.len(), 37);
+    for (a, b) in original.destinations.iter().zip(&list.destinations) {
+        assert_eq!(a.link, b.link, "entry {:x}", a.entry);
+        assert!(b.link.is_some(), "entry {:x}", b.entry);
+    }
 }
