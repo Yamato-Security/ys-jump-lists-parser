@@ -562,27 +562,30 @@ fn entries_with_property_stores() {
 /// entry names.
 #[test]
 fn the_list_property_store_and_unlisted_streams() {
-    let mut dest = dest_list(&[entry_v4(1, "C:\\a.txt", &[])]);
-    dest.resize(4096, 0);
-    let store = property_store("Shared store");
-    let mut stream = (store.len() as u32).to_le_bytes().to_vec();
-    stream.extend(store);
-    stream.resize(4096, 0);
-    let mut link = sample_link();
-    link.resize(4096, 0);
-    let file = compound_file(&[
-        ("DestList", dest),
-        ("DestListPropertyStore", stream),
-        ("1", link.clone()),
-        ("9", link),
-    ]);
-    let list = jumplist::automatic(&file).unwrap();
-    assert!(list.problems.is_empty(), "{:?}", list.problems);
-    assert_eq!(list.properties.len(), 1);
-    assert_eq!(list.properties[0].value.display(), "Shared store");
-    assert_eq!(list.unlisted.len(), 1);
-    assert_eq!(list.unlisted[0].name, "9");
-    assert!(list.unlisted[0].link.is_some());
+    // In any case: compound files compare names without regard to case.
+    for store_name in ["DestListPropertyStore", "DESTLISTPROPERTYSTORE"] {
+        let mut dest = dest_list(&[entry_v4(1, "C:\\a.txt", &[])]);
+        dest.resize(4096, 0);
+        let store = property_store("Shared store");
+        let mut stream = (store.len() as u32).to_le_bytes().to_vec();
+        stream.extend(store);
+        stream.resize(4096, 0);
+        let mut link = sample_link();
+        link.resize(4096, 0);
+        let file = compound_file(&[
+            ("DestList", dest),
+            (store_name, stream),
+            ("1", link.clone()),
+            ("9", link),
+        ]);
+        let list = jumplist::automatic(&file).unwrap();
+        assert!(list.problems.is_empty(), "{:?}", list.problems);
+        assert_eq!(list.properties.len(), 1, "{store_name}");
+        assert_eq!(list.properties[0].value.display(), "Shared store");
+        assert_eq!(list.unlisted.len(), 1, "{store_name}: {:?}", list.unlisted);
+        assert_eq!(list.unlisted[0].name, "9");
+        assert!(list.unlisted[0].link.is_some());
+    }
 }
 
 /// An entry whose stream is missing, and counts that disagree with the header.
@@ -640,4 +643,51 @@ fn application_and_folder_names() {
         list.destinations[0].display_path(),
         r"ControlPanelHome\5\System"
     );
+}
+
+/// `data` with the compound file directory entry of stream `from` renamed `to` (a name of the same
+/// length).
+fn rename_stream(data: &mut [u8], from: &str, to: &str) {
+    let name = |s: &str| -> Vec<u8> {
+        s.encode_utf16()
+            .chain([0])
+            .flat_map(u16::to_le_bytes)
+            .collect()
+    };
+    let (from, to) = (name(from), name(to));
+    assert_eq!(from.len(), to.len());
+    // Directory entries are 128 bytes, sector-aligned: the name, its size in bytes at 64, the
+    // type at 66 (2 = stream).
+    let at = (0..data.len() - 128)
+        .step_by(128)
+        .find(|&o| {
+            data[o..o + from.len()] == from[..]
+                && data[o + 64..o + 66] == (from.len() as u16).to_le_bytes()
+                && data[o + 66] == 2
+        })
+        .unwrap();
+    data[at..at + to.len()].copy_from_slice(&to);
+}
+
+/// Compound files compare directory entry names without regard to case: stream `A` holds entry
+/// `a`'s link, `DESTLIST` is the `DestList`.
+#[test]
+fn stream_names_match_in_any_case() {
+    let data = fs::read(
+        fixtures().join("jumplist/jumplist_parser/other/5f7b5f1e01b83767.automaticDestinations-ms"),
+    )
+    .unwrap();
+    let original = jumplist::automatic(&data).unwrap();
+    assert!(original.destinations.iter().any(|d| d.entry == 0xa));
+    let mut renamed = data.clone();
+    rename_stream(&mut renamed, "a", "A");
+    rename_stream(&mut renamed, "DestList", "DESTLIST");
+    let list = jumplist::automatic(&renamed).unwrap();
+    assert!(list.problems.is_empty(), "{:?}", list.problems);
+    assert!(list.unlisted.is_empty(), "{:?}", list.unlisted);
+    assert_eq!(list.destinations.len(), 37);
+    for (a, b) in original.destinations.iter().zip(&list.destinations) {
+        assert_eq!(a.link, b.link, "entry {:x}", a.entry);
+        assert!(b.link.is_some(), "entry {:x}", b.entry);
+    }
 }

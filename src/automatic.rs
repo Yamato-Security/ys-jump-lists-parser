@@ -155,11 +155,13 @@ pub fn automatic_with(data: &[u8], options: &Options) -> Result<Automatic, compo
     let link_options = lnk::Options {
         code_page: options.code_page,
     };
-    let read_stream = |name: &str, problems: &mut Vec<String>| -> Option<Vec<u8>> {
-        let entry = file
-            .entries
+    let stream = |name: &str| {
+        file.entries
             .iter()
-            .find(|e| e.kind == compound::STREAM && e.name == name)?;
+            .find(|e| e.kind == compound::STREAM && same_name(&e.name, name))
+    };
+    let read_stream = |name: &str, problems: &mut Vec<String>| -> Option<Vec<u8>> {
+        let entry = stream(name)?;
         match file.contents(entry) {
             Ok(bytes) => {
                 if (bytes.len() as u64) < entry.size {
@@ -193,22 +195,20 @@ pub fn automatic_with(data: &[u8], options: &Options) -> Result<Automatic, compo
     let mut named = std::collections::HashSet::new();
     for d in &mut list.destinations {
         let name = format!("{:x}", d.entry);
-        if !named.insert(name.clone()) {
+        if !named.insert(name.to_uppercase()) {
             problems.push(format!(
                 "DestList entry {} repeats stream {name}",
                 d.position
             ));
             continue;
         }
-        match read_stream(&name, &mut problems) {
-            Some(bytes) => match lnk::parse_with(&bytes, &link_options) {
+        if stream(&name).is_none() {
+            problems.push(format!("entry {name} has no stream"));
+        } else if let Some(bytes) = read_stream(&name, &mut problems) {
+            match lnk::parse_with(&bytes, &link_options) {
                 Ok(link) => d.link = Some(link),
                 Err(e) => problems.push(format!("entry {name}: {e}")),
-            },
-            None if !file.entries.iter().any(|e| e.name == name) => {
-                problems.push(format!("entry {name} has no stream"));
             }
-            None => {}
         }
     }
     // Streams no entry names: what a removed entry or a damaged list left behind.
@@ -216,7 +216,11 @@ pub fn automatic_with(data: &[u8], options: &Options) -> Result<Automatic, compo
         .streams
         .iter()
         .map(|(name, _)| name.clone())
-        .filter(|n| n != "DestList" && n != "DestListPropertyStore" && !named.contains(n))
+        .filter(|n| {
+            !same_name(n, "DestList")
+                && !same_name(n, "DestListPropertyStore")
+                && !named.contains(&n.to_uppercase())
+        })
         .collect();
     for name in others {
         let link = read_stream(&name, &mut problems).and_then(|bytes| {
@@ -228,6 +232,12 @@ pub fn automatic_with(data: &[u8], options: &Options) -> Result<Automatic, compo
     }
     list.problems.extend(problems);
     Ok(list)
+}
+
+/// Whether two directory entry names are the same: compound files compare names without regard
+/// to case (MS-CFB 2.6.4), so a stream `A` is entry `a`'s, as JLECmd finds it.
+fn same_name(a: &str, b: &str) -> bool {
+    a.to_uppercase() == b.to_uppercase()
 }
 
 /// Bytes before the path's length: 112 in version 1, 128 from version 2 on.

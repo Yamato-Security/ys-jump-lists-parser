@@ -32,4 +32,6 @@ links read by ys-lnk-parser. (@YamatoSecurity)
   ending there: the jump list read no entries.
 - An entry's property store was assumed empty, so an entry with one shifted every later entry.
 - A host name stored in UTF-16 was cut after its first character.
+- Stream names are matched without regard to case, as compound files compare them (and JLECmd
+  finds them): an entry whose stream is named `A` for entry `a` read no link.
 - An entry whose stream is missing, and a stream the file cuts short, are problems.
