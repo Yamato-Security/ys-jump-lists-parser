@@ -13,7 +13,7 @@
 use shell::lnk::{self, Link};
 use shell::property::{self, Property};
 
-use crate::compound::{self, CompoundFile};
+use crate::compound::{self, same_name, CompoundFile};
 use crate::{f32_at, u16_at, u32_at, u64_at, Options};
 
 /// The `DestList` header.
@@ -155,13 +155,8 @@ pub fn automatic_with(data: &[u8], options: &Options) -> Result<Automatic, compo
     let link_options = lnk::Options {
         code_page: options.code_page,
     };
-    let stream = |name: &str| {
-        file.entries
-            .iter()
-            .find(|e| e.kind == compound::STREAM && same_name(&e.name, name))
-    };
     let read_stream = |name: &str, problems: &mut Vec<String>| -> Option<Vec<u8>> {
-        let entry = stream(name)?;
+        let entry = file.find_stream(name)?;
         match file.contents(entry) {
             Ok(bytes) => {
                 if (bytes.len() as u64) < entry.size {
@@ -202,7 +197,7 @@ pub fn automatic_with(data: &[u8], options: &Options) -> Result<Automatic, compo
             ));
             continue;
         }
-        if stream(&name).is_none() {
+        if file.find_stream(&name).is_none() {
             problems.push(format!("entry {name} has no stream"));
         } else if let Some(bytes) = read_stream(&name, &mut problems) {
             match lnk::parse_with(&bytes, &link_options) {
@@ -232,12 +227,6 @@ pub fn automatic_with(data: &[u8], options: &Options) -> Result<Automatic, compo
     }
     list.problems.extend(problems);
     Ok(list)
-}
-
-/// Whether two directory entry names are the same: compound files compare names without regard
-/// to case (MS-CFB 2.6.4), so a stream `A` is entry `a`'s, as JLECmd finds it.
-fn same_name(a: &str, b: &str) -> bool {
-    a.to_uppercase() == b.to_uppercase()
 }
 
 /// Bytes before the path's length: 112 in version 1, 128 from version 2 on.

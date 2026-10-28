@@ -38,6 +38,13 @@ pub fn is_compound(data: &[u8]) -> bool {
     data.get(..8) == Some(&SIGNATURE[..])
 }
 
+/// Whether two directory entry names are the same: compound files compare
+/// names without regard to case (MS-CFB 2.6.4).
+#[must_use]
+pub fn same_name(a: &str, b: &str) -> bool {
+    a.to_uppercase() == b.to_uppercase()
+}
+
 /// Why a compound file couldn't be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
@@ -299,16 +306,23 @@ impl<'a> CompoundFile<'a> {
         Ok(out)
     }
 
-    /// The first stream named `name` in directory order, in any storage
-    /// (its [`Entry::path`] tells them apart; read one with
-    /// [`contents`](Self::contents)), if there is one.
+    /// The first stream named `name` (in any case: compound files compare
+    /// names without regard to case) in directory order, in any storage (its
+    /// [`Entry::path`] tells them apart), if there is one.
+    #[must_use]
+    pub fn find_stream(&self, name: &str) -> Option<&Entry> {
+        self.entries
+            .iter()
+            .find(|e| e.kind == STREAM && same_name(&e.name, name))
+    }
+
+    /// The bytes of [`find_stream`](Self::find_stream)'s stream, if there is
+    /// one.
     ///
     /// # Errors
     /// When its chain is damaged.
     pub fn stream(&self, name: &str) -> Result<Option<Vec<u8>>, Error> {
-        self.entries
-            .iter()
-            .find(|e| e.kind == STREAM && e.name == name)
+        self.find_stream(name)
             .map(|entry| self.contents(entry))
             .transpose()
     }

@@ -16,7 +16,7 @@ links read by ys-lnk-parser. (@YamatoSecurity)
   the last category (`Custom::trailing`) and the links left in them from an earlier version of the
   list (`Custom::leftover`).
 - `appid`: application names by AppID, from Eric Zimmerman's table (MIT; 714 IDs).
-- `compound::is_compound`.
+- `compound::is_compound`, `compound::same_name` and `CompoundFile::find_stream`.
 - Tests on every automatic fixture against JLECmd (136 entries) and olefile, on lists built in the
   tests, and on damaged lists.
 
@@ -33,5 +33,6 @@ links read by ys-lnk-parser. (@YamatoSecurity)
 - An entry's property store was assumed empty, so an entry with one shifted every later entry.
 - A host name stored in UTF-16 was cut after its first character.
 - Stream names are matched without regard to case, as compound files compare them (and JLECmd
-  finds them): an entry whose stream is named `A` for entry `a` read no link.
+  finds them), in `CompoundFile::stream` too: an entry whose stream is named `A` for entry `a`
+  read no link, and `stream("destlist")` found no `DestList`.
 - An entry whose stream is missing, and a stream the file cuts short, are problems.

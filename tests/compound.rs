@@ -92,6 +92,38 @@ fn a_storage_holds_its_children() {
     );
 }
 
+#[test]
+fn streams_are_found_in_any_case() {
+    // Compound files compare names without regard to case (MS-CFB 2.6.4).
+    let data = std::fs::read(fixtures("compound/plaso/Document.doc")).unwrap();
+    let file = CompoundFile::parse(&data).unwrap();
+    let summary = file.stream("\u{5}SummaryInformation").unwrap().unwrap();
+    for name in ["\u{5}summaryinformation", "\u{5}SUMMARYINFORMATION"] {
+        assert_eq!(
+            file.stream(name).unwrap().as_ref(),
+            Some(&summary),
+            "{name}"
+        );
+        assert_eq!(
+            file.find_stream(name).map(|e| e.name.as_str()),
+            Some("\u{5}SummaryInformation")
+        );
+    }
+    assert_eq!(file.stream("\u{5}SummaryInformatio").unwrap(), None);
+    let data = std::fs::read(fixtures(
+        "jumplist/Win10/f01b4d95cf55d32a.automaticDestinations-ms",
+    ))
+    .unwrap();
+    let file = CompoundFile::parse(&data).unwrap();
+    let dest_list = file.stream("DestList").unwrap().unwrap();
+    assert_eq!(file.stream("destlist").unwrap(), Some(dest_list));
+    assert!(jumplist::compound::same_name(
+        "DestListPropertyStore",
+        "destlistpropertystore"
+    ));
+    assert!(!jumplist::compound::same_name("DestList", "DestList2"));
+}
+
 mod damage {
     use proptest::prelude::*;
 
