@@ -43,7 +43,7 @@ came with tests against JLECmd and olefile; what it missed is below.
 | The application each AppID belongs to (`appid`): Eric Zimmerman's table (MIT), 714 IDs | JLECmd |
 | Paths of shell namespace items (`::{GUID}\…`, `knownfolder:{…}`) named (`Destination::display_path`) | JLECmd |
 | Links in a code page other than Windows-1252 (`Options::code_page`, feature `codepages`) | ys-lnk-parser |
-| CD and DVD burn items in links (`D:\autorun.inf` was `D:\`), in ys-lnk-parser (Yamato-Security/ys-lnk-parser#4) | the one target path that differed from JLECmd |
+| In ys-lnk-parser (Yamato-Security/ys-lnk-parser#4): CD and DVD burn items in links (`D:\autorun.inf` was `D:\`), and library folders' times and NTFS reference | the one target path and the two MFT references that differed from JLECmd |
 
 On the 77 public jump lists, every `DestList` field and every link's path agrees with JLECmd on all
 389 entries and links it reads; the six files it refuses (four empty custom lists, one without its
