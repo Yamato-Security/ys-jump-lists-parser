@@ -21,13 +21,22 @@ const FREE: u32 = 0xffff_ffff;
 const NO_STREAM: u32 = 0xffff_ffff;
 /// Bytes of a directory entry.
 const DIRECTORY_ENTRY_SIZE: usize = 128;
-/// Directory entry types.
+/// An unused directory entry ([`Entry::kind`]).
 const UNUSED: u8 = 0;
-const STORAGE: u8 = 1;
-const STREAM: u8 = 2;
-const ROOT: u8 = 5;
+/// A storage: a directory of other entries ([`Entry::kind`]).
+pub const STORAGE: u8 = 1;
+/// A stream: a file ([`Entry::kind`]).
+pub const STREAM: u8 = 2;
+/// The root storage ([`Entry::kind`]).
+pub const ROOT: u8 = 5;
 /// Bytes of a mini sector.
 const MINI_SECTOR_SIZE: usize = 64;
+
+/// Whether `data` starts with the compound file signature.
+#[must_use]
+pub fn is_compound(data: &[u8]) -> bool {
+    data.get(..8) == Some(&SIGNATURE[..])
+}
 
 /// Why a compound file couldn't be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +104,8 @@ pub struct CompoundFile<'a> {
     fat: Vec<u32>,
     mini_fat: Vec<u32>,
     mini_stream: Vec<u8>,
+    /// The file ends inside the mini stream: mini sectors past its end are missing.
+    mini_stream_short: bool,
     cutoff: u64,
     /// Its directory entries, in directory order.
     pub entries: Vec<Entry>,
@@ -153,6 +164,7 @@ impl<'a> CompoundFile<'a> {
             fat,
             mini_fat: Vec::new(),
             mini_stream: Vec::new(),
+            mini_stream_short: false,
             cutoff,
             entries: Vec::new(),
             problems: Vec::new(),
@@ -205,6 +217,7 @@ impl<'a> CompoundFile<'a> {
         let (start, size) = (file.entries[root].start, file.entries[root].size);
         if start < END_OF_CHAIN && size > 0 {
             file.mini_stream = file.chain(start, Some(size))?;
+            file.mini_stream_short = (file.mini_stream.len() as u64) < size;
         }
         if mini_fat_start < END_OF_CHAIN {
             let raw = file.chain(mini_fat_start, None)?;
@@ -259,16 +272,27 @@ impl<'a> CompoundFile<'a> {
             if current == END_OF_CHAIN || current == FREE || out.len() as u64 >= size {
                 break;
             }
-            let bytes = span(current as usize, MINI_SECTOR_SIZE)
-                .and_then(|range| self.mini_stream.get(range))
+            let range = span(current as usize, MINI_SECTOR_SIZE)
                 .ok_or_else(|| error(format!("mini sector {current} outside the mini stream")))?;
-            out.extend_from_slice(bytes);
+            if let Some(bytes) = self.mini_stream.get(range.clone()) {
+                out.extend_from_slice(bytes);
+            } else if self.mini_stream_short && range.start < self.mini_stream.len() {
+                // The file ends here: the rest of the stream is missing.
+                out.extend_from_slice(&self.mini_stream[range.start..]);
+                break;
+            } else if self.mini_stream_short {
+                break;
+            } else {
+                return Err(error(format!(
+                    "mini sector {current} outside the mini stream"
+                )));
+            }
             current = *self
                 .mini_fat
                 .get(current as usize)
                 .ok_or_else(|| error(format!("mini sector {current} outside the mini table")))?;
         }
-        if (out.len() as u64) < size {
+        if (out.len() as u64) < size && !self.mini_stream_short {
             return Err(error("mini stream chain ends early"));
         }
         out.truncate(size as usize);
@@ -289,7 +313,8 @@ impl<'a> CompoundFile<'a> {
             .transpose()
     }
 
-    /// A stream's bytes (none for a storage or the root).
+    /// A stream's bytes (none for a storage or the root). Fewer than its size
+    /// when the file ends before the stream does.
     ///
     /// # Errors
     /// When its chain is damaged.
@@ -364,14 +389,18 @@ fn filetime(raw: u64) -> Option<u64> {
     (raw != 0).then_some(raw)
 }
 
-/// Sector `n` (sector 0 follows the 512-byte header).
+/// Sector `n` (sector 0 follows the 512-byte header). The file's last
+/// sector may be cut short: Windows writes jump lists only up to the end of
+/// their data, so the bytes that are there are the sector.
 fn sector_bytes(data: &[u8], sector: usize, n: u32) -> Result<&[u8], Error> {
     let range = (n as usize)
         .checked_add(1)
         .and_then(|index| span(index, sector))
         .ok_or_else(|| error("sector number overflows"))?;
-    data.get(range)
-        .ok_or_else(|| error(format!("sector {n} past the end of the file")))
+    if range.start >= data.len() {
+        return Err(error(format!("sector {n} past the end of the file")));
+    }
+    Ok(&data[range.start..range.end.min(data.len())])
 }
 
 /// The bytes of block `index` of `size`-byte blocks, if its end fits in a

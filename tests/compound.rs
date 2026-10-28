@@ -2,14 +2,16 @@
 //! oracle only: `tests/fixtures/oracle/olefile_tree.py` wrote
 //! `olefile.tsv`): every entry's path, type, size, creation and
 //! modification time, in plaso's `Document.doc` (Apache-2.0; a storage
-//! inside a storage, with both times) and in the automatic jump lists.
+//! inside a storage, with both times) and in every automatic jump list among
+//! the fixtures (4,096-byte sectors, and files that end inside their last
+//! sector, included).
 
 use std::collections::BTreeSet;
 
-use shell::compound::{CompoundFile, Entry};
+use jumplist::compound::{CompoundFile, Entry};
 
-/// `Document.doc` and the eight automatic jump lists.
-const FILES: usize = 9;
+/// `Document.doc` and the 13 automatic jump lists.
+const FILES: usize = 14;
 
 fn fixtures(path: &str) -> String {
     format!("{}/tests/fixtures/{path}", env!("CARGO_MANIFEST_DIR"))

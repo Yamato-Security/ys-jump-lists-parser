@@ -9,7 +9,7 @@ from the root's down, joined by '/', characters outside printable ASCII as
     python3 -m venv /tmp/olefile && /tmp/olefile/bin/pip install olefile==0.47
     /tmp/olefile/bin/python3 -I tests/fixtures/oracle/olefile_tree.py \
         tests/fixtures/compound/plaso/Document.doc \
-        tests/fixtures/jumplist/*/*.automaticDestinations-ms \
+        $(find tests/fixtures/jumplist -name '*.automaticDestinations-ms' | sort) \
         > tests/fixtures/oracle/olefile.tsv
 """
 import sys
