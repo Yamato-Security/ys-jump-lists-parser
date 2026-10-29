@@ -13,8 +13,8 @@
 use shell::lnk::{self, Link};
 use shell::property::{self, Property};
 
-use crate::compound::{self, same_name, CompoundFile};
-use crate::{f32_at, u16_at, u32_at, u64_at, Options};
+use crate::compound::{self, CompoundFile, same_name};
+use crate::{Options, f32_at, u16_at, u32_at, u64_at, utf16_units};
 
 /// The `DestList` header.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,7 +25,7 @@ pub struct Header {
     pub entry_count: u32,
     /// How many of them are pinned.
     pub pinned_count: u32,
-    /// A floating-point counter (Eric Zimmerman: `UnknownCounter`).
+    /// A floating-point counter.
     pub counter: f32,
     /// The highest entry number handed out so far: entries numbered below it and missing
     /// from the list were removed.
@@ -49,8 +49,7 @@ pub struct Destination {
     pub pin: Option<u32>,
     /// How many times it was used (version 2 and later; `None` before).
     pub interaction_count: Option<u32>,
-    /// A floating-point score that grows with use and decays with time (Eric Zimmerman:
-    /// `AccessCount`).
+    /// A floating-point score that grows with use and decays with time.
     pub score: f32,
     /// The NetBIOS name of the machine that holds the target.
     pub hostname: String,
@@ -79,7 +78,7 @@ pub struct Destination {
 
 impl Destination {
     /// The path with the shell namespace GUIDs in it named (`::{20D04FE0-…}` is `This PC`,
-    /// `knownfolder:{FDD39AD0-…}` is `Documents`), as Eric Zimmerman's tools name them; the
+    /// `knownfolder:{FDD39AD0-…}` is `Documents`), as forensic tools commonly name them; the
     /// path itself when it has none.
     #[must_use]
     pub fn display_path(&self) -> String {
@@ -234,8 +233,8 @@ const V1_PATH_AT: usize = 112;
 const V2_PATH_AT: usize = 128;
 
 /// The `DestList` stream: its header, then its entries. Version 1 has as many entries as the
-/// header counts; from version 2 on they run to the end of the stream (as Eric Zimmerman's
-/// tools read them; zeros at the end are padding), and a count that disagrees is a problem.
+/// header counts; from version 2 on they run to the end of the stream (zeros at the end are
+/// padding), and a count that disagrees is a problem.
 fn read_dest_list(data: &[u8], code_page: u16, list: &mut Automatic, problems: &mut Vec<String>) {
     if data.is_empty() {
         return;
@@ -320,10 +319,7 @@ fn destination(
     } else {
         (Vec::new(), path_end)
     };
-    let units: Vec<u16> = path_bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .collect();
+    let units: Vec<u16> = utf16_units(path_bytes);
     let (droid_created, mac) = shell::item::guid_v1(&entry[24..40]).unwrap_or_default();
     let d = Destination {
         position,
@@ -351,13 +347,11 @@ fn destination(
     Ok((d, size))
 }
 
-/// The NetBIOS name: ASCII, or UTF-16 when its second byte is 0 (as Eric Zimmerman's tools read
-/// it), up to the first NUL.
+/// The NetBIOS name: ASCII, or UTF-16 when its second byte is 0, up to the first NUL.
 fn hostname(bytes: &[u8]) -> String {
     if bytes.get(1) == Some(&0) && bytes.first().is_some_and(|&b| b != 0) {
-        let units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        let units: Vec<u16> = utf16_units(bytes)
+            .into_iter()
             .take_while(|&u| u != 0)
             .collect();
         String::from_utf16_lossy(&units)

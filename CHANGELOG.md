@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0 (Unreleased)
+
+### Changed
+- The crate is named after its repository, `ys-jump-lists-parser` (its library is still
+  `jumplist`), version 1.0.0, by Florian Amette and Zach Mathis (@yamatosecurity), on Rust's 2024
+  edition, and requires Rust 1.99. Links are read by ys-lnk-parser 1.0.0 (renamed from
+  `sootmark-shell`). (@YamatoSecurity)
+
 ## 0.1.0 (ys-jump-lists-parser)
 
 First version: the jump list and compound file code of sootmark-shell (Sootmark/shell), as
@@ -15,16 +23,15 @@ links read by ys-lnk-parser. (@YamatoSecurity)
 - `custom`: the class of objects that aren't links (`Category::other_objects`), the bytes after
   the last category (`Custom::trailing`) and the links left in them from an earlier version of the
   list (`Custom::leftover`).
-- `appid`: application names by AppID, from Eric Zimmerman's table (MIT; 714 IDs).
+- `appid`: application names by AppID, from an MIT-licensed table (714 IDs).
 - `compound::is_compound`, `compound::same_name` and `CompoundFile::find_stream`.
-- Tests on every automatic fixture against JLECmd (136 entries) and olefile, on lists built in the
+- Tests on every automatic fixture against a reference parser (136 entries) and olefile, on lists built in the
   tests, and on damaged lists.
 
 ### Changed
 - `Destination::access_count` is `interaction_count`; `Automatic::version` is `Automatic::version()`
   (from `header`).
-- From `DestList` version 2 on, entries run to the end of the stream, as JLECmd reads them (zeros
-  are padding); a header count that disagrees is a problem.
+- From `DestList` version 2 on, entries run to the end of the stream (zeros are padding); a header count that disagrees is a problem.
 - A custom category whose footer is missing, or with an entry that isn't a link, is kept.
 
 ### Fixed
@@ -32,7 +39,7 @@ links read by ys-lnk-parser. (@YamatoSecurity)
   ending there: the jump list read no entries.
 - An entry's property store was assumed empty, so an entry with one shifted every later entry.
 - A host name stored in UTF-16 was cut after its first character.
-- Stream names are matched without regard to case, as compound files compare them (and JLECmd
-  finds them), in `CompoundFile::stream` too: an entry whose stream is named `A` for entry `a`
+- Stream names are matched without regard to case, as compound files compare them, in
+  `CompoundFile::stream` too: an entry whose stream is named `A` for entry `a`
   read no link, and `stream("destlist")` found no `DestList`.
 - An entry whose stream is missing, and a stream the file cuts short, are problems.

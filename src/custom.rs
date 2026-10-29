@@ -13,7 +13,7 @@
 
 use shell::lnk::{self, Link};
 
-use crate::{u16_at, u32_at, Options};
+use crate::{Options, u16_at, u32_at, utf16_units};
 
 /// What a category holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,10 +181,7 @@ fn category(
             let Some(bytes) = data.get(at + 6..at + 6 + 2 * chars) else {
                 return truncated(at);
             };
-            let units: Vec<u16> = bytes
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
+            let units: Vec<u16> = utf16_units(bytes);
             at += 6 + 2 * chars;
             Kind::Custom(String::from_utf16_lossy(&units))
         }

@@ -1,5 +1,5 @@
-//! Jump lists against Eric Zimmerman's JLECmd (its output in `tests/fixtures/oracle/`, JLECmd
-//! 2026.10.5): every `DestList` column, and the link columns of each entry, of every automatic
+//! Jump lists against a reference jump list parser (its output in `tests/fixtures/oracle/`):
+//! every `DestList` column, and the link columns of each entry, of every automatic
 //! jump list in `tests/fixtures/jumplist/` (Windows 7 to 11, `DestList` versions 1, 3, 4 and 6,
 //! 512- and 4,096-byte sectors, files that end inside their last sector); the links and category
 //! names of the custom ones it reads. See `tests/fixtures/jumplist/README.md` for the sources.
@@ -10,10 +10,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 
 use common::{fixtures, path_agrees, records, when};
-use jumplist::{compound::CompoundFile, Destination, Kind};
+use jumplist::{Destination, Kind, compound::CompoundFile};
 use shell::lnk::Link;
 
-/// Automatic jump lists JLECmd reads: all of them.
+/// Automatic jump lists the oracle reads: all of them.
 const AUTOMATIC: usize = 13;
 /// `DestList` entries in them.
 const ENTRIES: usize = 136;
@@ -24,7 +24,7 @@ const CUSTOM: [&str; 3] = [
     "synthetic/ccba5a5986c77e43.customDestinations-ms",
 ];
 
-/// A GUID as JLECmd prints it: lowercase, no braces.
+/// A GUID as the oracle prints it: lowercase, no braces.
 fn bare(guid: &str) -> String {
     guid.trim_matches(['{', '}']).to_ascii_lowercase()
 }
@@ -53,7 +53,7 @@ fn check_link(link: &Link, row: &HashMap<String, String>, at: &str) {
     for (column, value) in link_columns(link) {
         assert_eq!(&value, &row[column], "{at}: {column}");
     }
-    // Without a target ID list, JLECmd names the target from the link information.
+    // Without a target ID list, the oracle names the target from the link information.
     let mut target = link.target_path();
     if target.is_empty() {
         let base = if link.network_path.is_empty() {
@@ -126,8 +126,8 @@ fn automatic_files() -> BTreeSet<String> {
 }
 
 #[test]
-fn automatic_matches_jlecmd() {
-    let mut by_file = oracle("JLECmd.csv");
+fn automatic_matches_the_oracle() {
+    let mut by_file = oracle("jumplist.csv");
     let files = automatic_files();
     assert_eq!(files.len(), AUTOMATIC);
     let mut checked = 0;
@@ -138,14 +138,14 @@ fn automatic_matches_jlecmd() {
         let rows = by_file.remove(file.as_str()).unwrap_or_default();
         assert_eq!(list.destinations.len(), rows.len(), "{file}");
         for row in rows {
-            // JLECmd numbers entries most recent first, which is stream order.
+            // The oracle numbers entries most recent first, which is stream order.
             let at = format!("{file} MRU {}", row["MRU"]);
             let d = &list.destinations[row["MRU"].parse::<usize>().unwrap()];
             assert_eq!(d.position.to_string(), row["MRU"], "{at}");
             for (column, value) in columns(d, list.version()) {
                 assert_eq!(&value, &row[column], "{at}: {column}");
             }
-            // JLECmd appends what it resolves the path to (`… ==> …`).
+            // The oracle appends what it resolves the path to (`… ==> …`).
             let path = row["Path"].split(" ==> ").next().unwrap();
             assert_eq!(d.path, path, "{at}: Path");
             check_link(d.link.as_ref().unwrap(), &row, &at);
@@ -157,8 +157,8 @@ fn automatic_matches_jlecmd() {
 }
 
 #[test]
-fn custom_matches_jlecmd() {
-    let mut by_file = oracle("JLECmd-custom.csv");
+fn custom_matches_the_oracle() {
+    let mut by_file = oracle("jumplist-custom.csv");
     let mut checked = 0;
     for file in CUSTOM {
         let list = jumplist::custom(&fs::read(fixtures().join("jumplist").join(file)).unwrap());
@@ -172,7 +172,7 @@ fn custom_matches_jlecmd() {
         assert_eq!(links.len(), rows.len(), "{file}");
         for (i, (row, (kind, link))) in rows.iter().zip(links).enumerate() {
             let at = format!("{file} link {i}");
-            // JLECmd names a custom category; its tasks have no name.
+            // The oracle names a custom category; its tasks have no name.
             match kind {
                 Kind::Custom(name) => assert_eq!(name, &row["EntryName"], "{at}"),
                 _ => assert_eq!(row["EntryName"], "", "{at}"),
@@ -215,8 +215,8 @@ fn custom_categories() {
             (Kind::Tasks, 2),
         ]
     );
-    // Windows 11 Chrome: after its three categories, the end of a longer, earlier list. JLECmd
-    // refuses the file ("footer missing").
+    // Windows 11 Chrome: after its three categories, the end of a longer, earlier list. The
+    // oracle refuses the file ("footer missing").
     let rewritten = jumplist::custom(
         &fs::read(
             fixtures()
@@ -248,7 +248,7 @@ fn custom_categories() {
     for current in rewritten.links().map(|(_, l)| &l.arguments) {
         assert!(!current.contains("192.168.50.33"), "{current}");
     }
-    // An empty Windows 11 list, which JLECmd refuses.
+    // An empty Windows 11 list, which the oracle refuses.
     let empty_11 = jumplist::custom(
         &fs::read(
             fixtures()
@@ -638,7 +638,7 @@ fn application_and_folder_names() {
         fs::read(fixtures().join("jumplist/Win10/7e4dca80246863e3.automaticDestinations-ms"))
             .unwrap();
     let list = jumplist::automatic(&data).unwrap();
-    // JLECmd: ::{26EE0668-…}\5\::{BB06C0E4-…} ==> ControlPanelHome\5\System
+    // The oracle: ::{26EE0668-…}\5\::{BB06C0E4-…} ==> ControlPanelHome\5\System
     assert_eq!(
         list.destinations[0].display_path(),
         r"ControlPanelHome\5\System"

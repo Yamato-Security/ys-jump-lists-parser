@@ -13,7 +13,7 @@
 
 use core::fmt;
 
-use crate::{u16_at, u32_at, u64_at};
+use crate::{u16_at, u32_at, u64_at, utf16_units};
 
 const SIGNATURE: [u8; 8] = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
 const END_OF_CHAIN: u32 = 0xffff_fffe;
@@ -204,7 +204,7 @@ impl<'a> CompoundFile<'a> {
         // Directory entry number to index in `entries`, and each entry's links.
         let mut indexes = Vec::new();
         let mut links = Vec::new();
-        for raw in directory.chunks_exact(DIRECTORY_ENTRY_SIZE) {
+        for raw in directory.as_chunks::<DIRECTORY_ENTRY_SIZE>().0 {
             let kind = raw[66];
             if kind == UNUSED {
                 indexes.push(None);
@@ -218,10 +218,7 @@ impl<'a> CompoundFile<'a> {
                 child: link(76),
             });
             let name_len = usize::from(u16_at(raw, 64).unwrap_or(0)).min(64);
-            let units: Vec<u16> = raw[..name_len.saturating_sub(2)]
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
+            let units: Vec<u16> = utf16_units(&raw[..name_len.saturating_sub(2)]);
             let name = String::from_utf16_lossy(&units);
             file.entries.push(Entry {
                 path: name.clone(),
@@ -279,9 +276,7 @@ impl<'a> CompoundFile<'a> {
                 .get(current as usize)
                 .ok_or_else(|| error(format!("sector {current} outside the allocation table")))?;
         }
-        if current != END_OF_CHAIN
-            && current != FREE
-            && !size.is_some_and(|s| out.len() as u64 >= s)
+        if current != END_OF_CHAIN && current != FREE && size.is_none_or(|s| (out.len() as u64) < s)
         {
             return Err(error("sector chain loops"));
         }

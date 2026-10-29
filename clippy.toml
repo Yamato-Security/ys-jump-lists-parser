@@ -1,2 +1,2 @@
 # Tool, artifact and format names, not code.
-doc-valid-idents = ["JLECmd", "LECmd", "NetBIOS", "DestList", "DestListPropertyStore", "AppID", "AppIDs", "GuidMapping", "OneDrive", "AccessCount", "UnknownCounter", "dtformats", "libolecf", ".."]
+doc-valid-idents = ["NetBIOS", "DestList", "DestListPropertyStore", "AppID", "AppIDs", "OneDrive", "dtformats", "libolecf", ".."]
