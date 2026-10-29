@@ -512,7 +512,7 @@ dependencies = [
 [[package]]
 name = "ys-lnk-parser"
 version = "1.0.0"
-source = "git+https://github.com/Yamato-Security/ys-lnk-parser?rev=92fa0657b59707294ccc8cf1982470ed439cb1a2#92fa0657b59707294ccc8cf1982470ed439cb1a2"
+source = "git+https://github.com/Yamato-Security/ys-lnk-parser#cca62c289273d9e4f6717ae34c07a3326c0e57ad"
 dependencies = [
  "codepage",
  "encoding_rs",
