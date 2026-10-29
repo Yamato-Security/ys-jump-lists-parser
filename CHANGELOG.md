@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0 (Unreleased)
+
+### Changed
+- The crate is named after its repository, `ys-jump-lists-parser` (its library is still
+  `jumplist`), version 1.0.0, by Florian Amette and Zach Mathis (@yamatosecurity), on Rust's 2024
+  edition, and requires Rust 1.99. Links are read by ys-lnk-parser 1.0.0 (renamed from
+  `sootmark-shell`). (@YamatoSecurity)
+
 ## 0.1.0 (ys-jump-lists-parser)
 
 First version: the jump list and compound file code of sootmark-shell (Sootmark/shell), as

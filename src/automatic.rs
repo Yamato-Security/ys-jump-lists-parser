@@ -13,8 +13,8 @@
 use shell::lnk::{self, Link};
 use shell::property::{self, Property};
 
-use crate::compound::{self, same_name, CompoundFile};
-use crate::{f32_at, u16_at, u32_at, u64_at, Options};
+use crate::compound::{self, CompoundFile, same_name};
+use crate::{Options, f32_at, u16_at, u32_at, u64_at, utf16_units};
 
 /// The `DestList` header.
 #[derive(Debug, Clone, PartialEq)]
@@ -320,10 +320,7 @@ fn destination(
     } else {
         (Vec::new(), path_end)
     };
-    let units: Vec<u16> = path_bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .collect();
+    let units: Vec<u16> = utf16_units(path_bytes);
     let (droid_created, mac) = shell::item::guid_v1(&entry[24..40]).unwrap_or_default();
     let d = Destination {
         position,
@@ -355,9 +352,8 @@ fn destination(
 /// it), up to the first NUL.
 fn hostname(bytes: &[u8]) -> String {
     if bytes.get(1) == Some(&0) && bytes.first().is_some_and(|&b| b != 0) {
-        let units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        let units: Vec<u16> = utf16_units(bytes)
+            .into_iter()
             .take_while(|&u| u != 0)
             .collect();
         String::from_utf16_lossy(&units)

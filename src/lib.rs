@@ -35,8 +35,8 @@ pub mod automatic;
 pub mod compound;
 pub mod custom;
 
-pub use automatic::{automatic, automatic_with, Automatic, Destination, Header, Unlisted};
-pub use custom::{custom, custom_with, Category, Custom, Kind, Leftover};
+pub use automatic::{Automatic, Destination, Header, Unlisted, automatic, automatic_with};
+pub use custom::{Category, Custom, Kind, Leftover, custom, custom_with};
 
 /// How to read a jump list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +72,16 @@ pub fn parse(data: &[u8], options: &Options) -> Result<JumpList, compound::Error
     } else {
         Ok(JumpList::Custom(custom_with(data, options)))
     }
+}
+
+/// UTF-16LE code units: each pair of bytes, a last odd byte left out.
+pub(crate) fn utf16_units(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&pair| u16::from_le_bytes(pair))
+        .collect()
 }
 
 pub(crate) fn u16_at(b: &[u8], at: usize) -> Option<u16> {

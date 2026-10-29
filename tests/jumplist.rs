@@ -10,7 +10,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 
 use common::{fixtures, path_agrees, records, when};
-use jumplist::{compound::CompoundFile, Destination, Kind};
+use jumplist::{Destination, Kind, compound::CompoundFile};
 use shell::lnk::Link;
 
 /// Automatic jump lists JLECmd reads: all of them.

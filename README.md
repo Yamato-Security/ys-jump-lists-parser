@@ -70,15 +70,16 @@ match jumplist::parse(&data, &jumplist::Options::default())? {
 println!("{:?}", jumplist::appid::app_name("f01b4d95cf55d32a"));
 ```
 
-Use it from Cargo by commit (it is not published):
+Use it from Cargo by commit (the crate is `ys-jump-lists-parser`, named after the repository, and
+its library is `jumplist`; it is not published):
 
 ```toml
 [dependencies]
-ys-jump-lists = { git = "https://github.com/Yamato-Security/ys-jump-lists-parser", rev = "<commit>" }
+jumplist = { package = "ys-jump-lists-parser", git = "https://github.com/Yamato-Security/ys-jump-lists-parser", rev = "<commit>" }
 ```
 
 Features: `guid-names` (default; names of shell GUIDs, about 900 KB), `codepages` (code pages other
-than Windows-1252 for links; Rust 1.88). Without features it builds on Rust 1.80, and for
+than Windows-1252 for links). It needs Rust 1.99 (edition 2024), and builds for
 `wasm32-unknown-unknown`.
 
 ## What it reads
