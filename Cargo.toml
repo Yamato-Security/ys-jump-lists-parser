@@ -28,7 +28,7 @@ codepages = ["shell/codepages"]
 
 [dependencies]
 # Links, shell items and property stores: Yamato Security's ys-lnk-parser, pinned to a commit.
-shell = { package = "ys-lnk-parser", git = "https://github.com/Yamato-Security/ys-lnk-parser", rev = "ad0c3a9bd3a1cbf04e79fb09b1d3a3b213e15b01", version = "1.0", default-features = false }
+shell = { package = "ys-lnk-parser", git = "https://github.com/Yamato-Security/ys-lnk-parser", rev = "92fa0657b59707294ccc8cf1982470ed439cb1a2", version = "1.0", default-features = false }
 
 [dev-dependencies]
 proptest = "1"
