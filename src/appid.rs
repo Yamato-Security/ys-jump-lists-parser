@@ -1,8 +1,7 @@
 //! Application identifiers: a jump list's file name is its application's AppID
-//! (`f01b4d95cf55d32a.automaticDestinations-ms` is Windows Explorer's). Names from Eric
-//! Zimmerman's list (`JumpList/Resources/AppIDs.txt`, MIT licence, `src/appid/LICENSE`; the list
-//! at EricZimmerman/JumpList c158abb), as his tools name them. The list's 15-digit AppIDs lost a
-//! leading zero; they are given it back.
+//! (`f01b4d95cf55d32a.automaticDestinations-ms` is Windows Explorer's). Names from an AppID list
+//! (MIT licence, `src/appid/LICENSE`). The list's 15-digit AppIDs lost a leading zero; they are
+//! given it back.
 
 /// The AppID a jump list's file name starts with: its first 16 hexadecimal digits, lowercase.
 #[must_use]
