@@ -1,11 +1,11 @@
 # ys-jump-lists-parser
 
 Yamato Security's parser for Windows jump lists (`*.automaticDestinations-ms`,
-`*.customDestinations-ms`), for [Juntei](https://github.com/Yamato-Security/juntei). It grew from the
-jump list and compound file code of [sootmark-shell](https://github.com/Sootmark/shell) (Florian
+`*.customDestinations-ms`), for [Juntei](https://github.com/Yamato-Security/juntei). It grew from
+the jump list and compound file code of [sootmark-shell](https://github.com/Sootmark/shell) (Florian
 Amette), as Yamato Security's [ys-lnk-parser](https://github.com/Yamato-Security/ys-lnk-parser)
-improved it; that history and the MIT OR Apache-2.0 license are kept, and links are read with
-ys-lnk-parser.
+improved it; that history is kept, and its code stays under its MIT OR Apache-2.0 license (see
+[License](#license)). Links are read with ys-lnk-parser.
 
 ## Why this base
 
@@ -102,5 +102,9 @@ Test files and their licenses: `tests/fixtures/jumplist/README.md`.
 
 ## License
 
-MIT OR Apache-2.0, as sootmark-shell (`LICENSE-MIT`, `LICENSE-APACHE`). The AppID table is under the
-MIT license (`src/appid/LICENSE`).
+ys-jump-lists-parser is copyright Shirofune Security Co., Ltd. and released under the [Reciprocal
+Public License 1.5](LICENSE) (RPL-1.5); its source code was published under MIT OR Apache-2.0 before
+version 1.0.0. It is changed from [sootmark-shell](https://github.com/Sootmark/shell) (copyright
+Cyber Experts), whose code stays under the MIT License or the Apache License 2.0 (`LICENSE-MIT`,
+`LICENSE-APACHE`): each Rust file changed from it says so in its header. The AppID table is under
+the MIT license (`src/appid/LICENSE`).
