@@ -100,6 +100,16 @@ Damage is reported in each result's `problems`, never a panic; what can be read 
 
 Test files and their licenses: `tests/fixtures/jumplist/README.md`.
 
+## Contributing
+
+Contributions require this repository's [Contributor License Agreement](CLA.md).
+It permits **Zachary Mathis** and **Shirofune Security Co., Ltd.** to use and
+sell covered contributions in proprietary editions, while accepted contributions
+also remain available in the free, open-source community edition.
+Read [how to sign](CONTRIBUTING.md#how-to-sign). The `cla/required` check uses
+the [maintainer-verified signer registry](.github/cla/signatures.json); first-time
+signatures require verification and registration.
+
 ## License
 
 ys-jump-lists-parser is copyright Shirofune Security Co., Ltd. and released under the [Reciprocal
