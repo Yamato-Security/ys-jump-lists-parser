@@ -10,7 +10,6 @@ rust-version = "1.99"
 description = "Windows jump lists (automaticDestinations-ms and customDestinations-ms): every DestList version, property stores, links, custom categories and application names; damage reported, never a panic."
 license = "RPL-1.5 AND (MIT OR Apache-2.0)"
 repository = "https://github.com/Yamato-Security/ys-jump-lists-parser"
-homepage = "https://github.com/Yamato-Security/ys-jump-lists-parser"
 keywords = ["forensics", "dfir", "jumplist", "lnk", "windows"]
 # Sources only: test fixtures stay in the repository.
 include = ["/src", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
@@ -32,8 +31,8 @@ codepages = ["shell/codepages"]
 shell = { package = "ys-lnk-parser", git = "https://github.com/Yamato-Security/ys-lnk-parser", version = "1.0", default-features = false }
 
 [dev-dependencies]
-proptest = "1"
-serde_json = "1"
+proptest = "1.12.0"
+serde_json = "1.0.154"
 
 [lints.rust]
 unsafe_code = "forbid"
